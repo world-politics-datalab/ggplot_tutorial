@@ -1,0 +1,428 @@
+---
+title: "GGPLOT2 Tutorial"
+author: "Carlos Yordan"
+date: "6/3/2022"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+
+```{r setup, include=FALSE}
+
+
+library (tidyverse)
+library (ggplot2)
+library (treemapify)
+library (gapminder)
+library(maps)
+library(ggmap)
+library(countrycode)
+library(RColorBrewer)
+library (ggthemes)
+library (sf)
+library (ggsci)
+library (extrafont)
+library (viridis)
+
+```
+
+For this tutorial, We will be using three data sources:
+
+- The metadata for my team's UN General Debate (UNGD) project.
+- The `gapminder` database which includes a ton of economic and demographic variables
+- Data on the ratification of the UN's core human rights instruments, collected by Jeehae and Julia
+
+## The Number of Democracies and Dictatorships in the UNGD (1970-2021)
+
+```{r}
+setwd("E:/DHSI_2022/UNGD_1970_2021")
+
+
+meta1 <- file.choose("merge_copy_undg_v2_june2022-merge_copy(1).csv")
+
+meta1 <- read.csv(meta1)
+
+head(meta1)
+
+```
+
+This plot is similar to the one in the PowerPoint presentation which measured the number of male and female leaders delivering statements at the UNGD.
+
+First, we need to wrangle the data using mostly `dplyr`.
+
+I noticed that the year variable in the "meta" dataframe was coded as a "character" rather than numeric. Here is a quick way to change the format, using "base" `r`.
+
+I also noticed that my gender variable needs to be changed to lowercase. 
+
+```{r}
+
+meta1$year <- as.numeric(meta1$year)
+
+meta1$gender_lower <- tolower (meta1$gender)
+
+head(meta1)
+
+```
+
+We will use 'dplyr' to count the number of democracies and dictatorships (see: "type_polsys") participating in the UNDG per year. Note that we have some "n/a"s in our data and we will filter them out.  
+
+```{r}
+
+
+dem_dict <- meta1 %>%
+  group_by (year) %>%
+  count (type_polsys)%>%
+  filter (type_polsys != "n/a")
+
+```
+
+Then we feed this data into `ggplot`
+
+```{r}
+
+ggplot (dem_dict, aes (x=year, y=n, fill= type_polsys)) +
+  geom_area (stat= "identity", condition = "stack")
+
+```
+This is our basic graph. Let's go back to the PowerPoint. So far, we have added three layers:
+
+- *data*
+- *aes*
+- *geom*
+
+Now that we have the basic plot done we can start working on the theme. For this plot, we will NOT use *facet* or *stats* layers. 
+
+```{r}
+ggplot (dem_dict, aes (x=year, y=n, fill= type_polsys)) +
+  geom_area (stat= "identity", condition = "stack") +
+  theme_clean () +
+  scale_fill_aaas() +
+  labs (fill= "Political Systems:")+
+  theme (text = element_text(family= "mono"))+
+  theme (legend.position = "bottom",
+         legend.title = element_text (size=10, face ="bold"),
+         legend.text = element_text(size = 8),
+         legend.key.size = unit(.75,"line"))+
+  theme (plot.title = element_text(size=12, face="bold"),
+         axis.title = element_text (size=8))+
+  labs (title= "Number of Democracies and Dictatorships\n Participating in the UN General Debate (1970-2021)",
+        x = "",
+        y = "Number") 
+```
+
+## Treemap Plot
+
+Using the UNGD metadata, we can try to figure out what governmental positions most of the female leaders hold when they address the UN General Debate. Note the code. We are interested only in women leaders. So we can filter the gender_lower to only women leaders. There are more than 20 positions listed in the dataframe. We will only look at the top 6 titles. Notice that we are looking at all the years in this plot. 
+
+```{r}
+fem_post2 <- meta1 %>%
+  filter (gender_lower == "female") %>%
+  count (post) %>%
+  arrange (desc (n)) %>%
+  filter (post %in% c ("President", "Vice President", "Prime Minister", "Deputy Prime Minister", "Minister for Foreign Affairs", "UN Representative"))
+```
+
+Let's feed the data to `ggplot`. Because we are plotting a treemap, we need to make sure that the `treemapify` package is already loaded - which I did so already. Note that the syntas used by the authors of this package is in line with `ggplot`'s grammar of graphics.
+
+```{r}
+ggplot(fem_post2, 
+       aes(fill = post, 
+           area = n,
+           label = post)) +
+  geom_treemap() +
+  theme_clean ()+
+  geom_treemap_text(color ="white", place = "centre", family = "mono", size =10)+
+  theme(legend.position = "none")+
+  labs(title = "Women Leaders' Top Goverment Posts")+
+  theme (plot.title = element_text(size=16, face="bold", family="mono"))+
+  scale_fill_d3()
+```
+
+
+## GEOM_COL Graph of Government Posts by Gender
+
+Let's wrangle and prepare the data from the UNGD metadata. 
+
+```{r}
+
+gender_post <- meta1 %>%
+  group_by (gender_lower) %>%
+  count (post) %>%
+  filter (gender_lower != "unknown") %>%
+  filter (post %in% c ("President", "Vice President", "Prime Minister", "Deputy Prime Minister", "Minister for Foreign Affairs", "Deputy Minister for Foreign Affairs", "UN Representative"))
+  
+
+```
+
+Let's run our first graph.
+
+
+```{r}
+ggplot (gender_post, aes(x=post, y=n, fill=gender_lower))+
+  geom_col ()
+```
+
+I prefer to reorder from large to small and also flip the graph. We will use "coord_flip" function which is a *coordinate* layer!
+
+In addition, note in the *aes* the code snippet after "x=". I added the fct_reorder command to reorder the posts from highest to lowest. This is technically a *stat* layer but I did so in the *aes* layer.
+
+```{r}
+ggplot (gender_post, aes (x=fct_reorder (post, n), y=n, fill =gender_lower)) +
+  geom_col () +
+  coord_flip()
+```
+
+
+Then we can add *theme* layers.
+
+```{r}
+
+ggplot (gender_post, aes (x=fct_reorder (post, n), y=n, fill =gender_lower)) +
+  geom_col () +
+  coord_flip()+
+theme_calc ()+
+  theme(legend.position = "right")+
+  labs(title = "World Leader's Governmental Posts by Gender")+
+  theme (plot.title = element_text(size=12, face="bold", family="mono", hjust= 0, vjust = 0))+
+  labs (fill= "Gender:",
+        x="",
+        y="")+
+  scale_fill_nejm()
+```
+
+## Scatterplot using Gapminder
+
+Let's see what the relationship is between GDP per capita and life expectancy. I don't have to wrangle the data as it is already organized in the `gapminder` package into a dataframe.
+
+```{r}
+summary(gapminder)
+```
+Let's go back to `ggplot`'s layering system.
+
+We will only feed `ggplot` the:
+
+- *data*
+- *aes*
+
+```{r}
+
+ggplot(gapminder, aes(x = gdpPercap, y = lifeExp))
+
+```
+This plot is empty because we did not a *geom*, thus `ggplot` does not know HOW to plot the data.
+
+```{r}
+ggplot(gapminder, aes(x = gdpPercap, y = lifeExp)) +
+  geom_point()
+```
+
+
+Outliers in the "gdpPercap" variable are skewing the distribution of the data. Let's transform the data by using a simple log transformation.
+
+Now we are adding a *stat* layer to our plot!
+
+```{r}
+ggplot(gapminder, aes(x = gdpPercap, y = lifeExp)) +
+  geom_point()+
+   scale_x_log10()
+
+```
+
+Could we do something else? We could color the dots by continent. This is an *aes* layer and we can put it in the "geom_point" function OR in the "aes" function, after the input for "y". 
+
+```{r}
+ggplot(gapminder, aes(x = gdpPercap, y = lifeExp)) +
+  geom_point(aes (color=continent))+
+   scale_x_log10()
+```
+
+
+We could also try to fit a line to make sense what type of relationship we have between both variables. Again, we are now entering a new *stat* layer.
+
+
+```{r}
+ggplot(gapminder, aes(x = gdpPercap, y = lifeExp)) +
+  geom_point(aes (color=continent))+
+   scale_x_log10()+
+  geom_smooth()
+```
+
+We can also enter a linear model (LM) instead of the smooth line.
+
+```{r}
+ggplot(gapminder, aes(x = gdpPercap, y = lifeExp)) +
+  geom_point(aes (color=continent))+
+   scale_x_log10()+
+  geom_smooth(method = "lm")
+```
+
+
+Let's use *facet* layer. In this graph we will use a "geom_line" rather than "geom_point". Each line represents a country.
+
+```{r}
+ggplot(gapminder, aes(x = year, y = lifeExp, group= country,
+                      color = continent)) +
+  geom_line ()+
+  facet_wrap(~ continent) +
+  scale_color_manual(values = continent_colors)
+```
+
+
+Of course, we can add *theme* layers to make these graphs look prettier. 
+
+## Making a Histogram using Gapminder Data
+
+```{r}
+ggplot(gapminder, aes(lifeExp))+
+  geom_histogram()
+```
+
+We can also turn this histogram into a density plot and we can use the "continent" variable to map the density plot per continent. Notice that I used an "alpha" command to control for the transparency of the plot.
+
+```{r}
+ggplot(gapminder, aes(lifeExp))+
+ geom_density(aes(fill=continent), alpha= 0.25) +
+  scale_fill_lancet()
+
+```
+
+It is worth noting that distribution of the data is the same in the histogram and density plot!
+
+## Line graphs using the Gapminder Dataset
+
+Let's look at life expectancy a bit more in depth. We will be using both `dplyr` and `ggplot` together in this example. Let's plot the life expectancy rate in the United States.
+
+```{r}
+gapminder %>% 
+  filter(country == "United States") %>% 
+  ggplot(aes(x=year, y=lifeExp)) +
+  geom_line()
+```
+
+How about if we want to compare a few countries. Note in "geom_line" I asked to make the line a bit thicker using the "size" command.
+
+```{r}
+countries <- c("United States", "China")
+
+gapminder %>% filter(country %in% countries) %>% 
+  ggplot(aes(x=year,y=lifeExp, color = country)) +
+  geom_line(size = 1)+
+  theme_bw()
+```
+
+
+## Let's Make Choropleth Map
+
+Let's make sure we have all the necessary packages. 
+
+```{r}
+library(tidyverse)
+library(maps)
+library(ggmap)
+library(countrycode)
+library(RColorBrewer)
+library (ggthemes)
+library (sf)
+library (ggsci)
+library (extrafont)
+library (viridis)
+
+```
+
+
+We will use the data collected by Jeehae and Julia on ICERD's ratification status.
+
+We will wrangle and prepare the data.
+
+```{r}
+# Read the data from the GitHub repository:
+
+hr <- read.csv ("https://raw.githubusercontent.com/world-politics-datalab/humanrights-treaties-ratification-status/main/hr_status_icerd.csv")
+
+#For mapping purposes, we will add Greenland to the dataset. Greenland is a Danish territory. So we will add the same information as Denmark's. This is the "dplyr" code
+
+hr_gr <- hr %>%
+  add_row(iso2 = "GL", member= "Greenland", state.party = 1, year.ratification.or.accession= 1971, signatory=0, no.action=0,status="state party")
+
+# Let's merge the information on Greenland back to "hr" dataset:
+
+hr <- hr_gr
+
+# The ISO2 abbreviation for Namibia is NA, but R read the NA as n/a. We need to fix this. So I used the "countrycode" package to enter all the ISO2 abbreviations, fixing the problem.
+
+hr$iso2 <- countrycode (hr$member, origin= "country.name", destination = "iso2c", )
+```
+
+
+We need to get a dataset with a world map, including longitude and latitude data. We need to use `ggplot` to see what we are working with. 
+
+```{r}
+wmap <- map_data ("world")
+
+# check the map using ggplot:
+
+worldplot <- ggplot()+
+  geom_polygon(data=wmap, aes(x=long, y=lat, group = group))+
+  coord_fixed(1.3)
+
+worldplot
+```
+
+
+We will use `dplyr` to combine the two datasets.
+
+```{r}
+#let's add iso2
+
+wmap$iso2 <- countrycode (wmap$region, origin= "country.name", destination = "iso2c", )
+
+#join the map with the hr data
+
+wmap_hr <- wmap %>%
+  left_join (hr, by = c("iso2" = "iso2"))
+
+## filter out NAs
+
+wmap_hr <- filter(wmap_hr, !is.na(status))
+
+```
+
+
+Now we can use `ggplot` to create the map.
+
+```{r}
+
+ggplot(wmap_hr, aes(long, lat, group = group)) +
+  coord_fixed(1.3)+
+  geom_polygon(aes(fill = status))+
+  geom_polygon(data =wmap_hr, colour = "white", fill = NA) +
+  ggtitle("International Covention on the Elimination of All Forms\nof Racial Discrimination (ICERD)") +
+  scale_y_continuous()+
+  scale_fill_manual (values = c("darkred", "orange", "darkblue"))+
+  #scale_fill_aaas ()+
+  theme_hc()+
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        rect = element_blank())+
+  theme(plot.title = element_text(size = 14))+
+    theme(plot.title = element_text(face = "bold"))+
+    theme (legend.position = "right",
+         legend.title = element_text(color = "black", size=10),
+         legend.text = element_text (color = "black", size =8),
+         legend.key.size = unit(0.3, 'cm'),
+        legend.key.height = unit(0.3, 'cm'),
+        legend.key.width = unit(0.3, 'cm'), 
+         )+
+  labs (fill = "Status of Ratification:",
+        x="",
+        y= "")
+
+```
+
+
+#FINITO!!!
+
+Feel free to email: cyordan@drew.edu with questions.
